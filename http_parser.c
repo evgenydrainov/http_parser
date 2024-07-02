@@ -92,12 +92,10 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
 	// Read status line.
 	{
 		string status_line = eat_line(&text);
-		printf("status_line = " STR_FMT "\n", STR_ARG(status_line));
 
 		// Protocol version.
 		eat_whitespace(&status_line);
 		string protocol_version = eat_word(&status_line);
-		printf("protocol_version = " STR_FMT "\n", STR_ARG(protocol_version));
 		
 		if (!(strings_match(protocol_version, STR("HTTP/1.1")) || strings_match(protocol_version, STR("HTTP/1.0")))) {
 			// Unknown protocol version
@@ -110,7 +108,6 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
 		// Status code.
 		eat_whitespace(&status_line);
 		string status_code = eat_word(&status_line);
-		printf("status_code = " STR_FMT "\n", STR_ARG(status_code));
 
 		out_resp->status_code = string_to_u16(status_code);
 		// TODO: if status code is not integer, then error
@@ -118,7 +115,6 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
 		// Remaining line is the status text.
 		eat_whitespace(&status_line);
 		string status_text = status_line;
-		printf("status_text = " STR_FMT "\n", STR_ARG(status_text));
 
 		out_resp->status_text     = status_text.data;
 		out_resp->status_text_len = status_text.count;
@@ -131,11 +127,8 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
 		size_t num_headers_written = 0;
 
 		while (header_line.count > 0) {
-			// printf("header_line = " STR_FMT "\n", STR_ARG(header_line));
-
 			eat_whitespace(&header_line);
 			string header_name = eat_word(&header_line);
-			printf("header_name = " STR_FMT "\n", STR_ARG(header_name));
 
 			// Strip colon in header name.
 			if (header_name.count > 0) {
@@ -147,7 +140,6 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
 
 			eat_whitespace(&header_line);
 			string header_value = header_line;
-			printf("header_value = " STR_FMT "\n", STR_ARG(header_value));
 
 			if (header_index < headers_max_len) {
 				headers_buf[header_index].name     = header_name.data;
@@ -173,8 +165,6 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
 	// Remaining text is the body.
 	{
 		string body = text;
-
-		printf("body = " STR_FMT "\n", STR_ARG(body));
 
 		out_resp->body     = body.data;
 		out_resp->body_len = body.count;
