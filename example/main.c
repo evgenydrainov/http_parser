@@ -1,5 +1,7 @@
 #include "http_parser.h"
 
+#include <stdio.h>
+
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof(a[0]))
 
 int main(void) {
