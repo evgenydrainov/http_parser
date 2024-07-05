@@ -13,7 +13,7 @@ typedef struct {
 // TODO: handle CRLF and CR
 static string eat_line(string* str) {
 	string result = {str->data, 0};
-	while (*str->data != '\n' && str->count > 0) {
+	while (str->count > 0 && *str->data != '\n') {
 		str->data++;
 		str->count--;
 		result.count++;
@@ -30,7 +30,7 @@ static string eat_line(string* str) {
 
 static string eat_header_name(string* str) {
 	string result = {str->data, 0};
-	while (*str->data != ':' && str->count > 0) {
+	while (str->count > 0 && *str->data != ':') {
 		str->data++;
 		str->count--;
 		result.count++;
@@ -55,7 +55,7 @@ static bool is_numerical(char ch) {
 
 static string eat_word(string* str) {
 	string result = {str->data, 0};
-	while (!is_whitespace(*str->data) && str->count > 0) {
+	while (str->count > 0 && !is_whitespace(*str->data)) {
 		str->data++;
 		str->count--;
 		result.count++;
@@ -64,7 +64,7 @@ static string eat_word(string* str) {
 }
 
 static void eat_whitespace(string* str) {
-	while (is_whitespace(*str->data) && str->count > 0) {
+	while (str->count > 0 && is_whitespace(*str->data)) {
 		str->data++;
 		str->count--;
 	}
