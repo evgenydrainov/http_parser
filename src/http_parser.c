@@ -107,6 +107,14 @@ static bool string_contains_char(string str, char ch) {
     return false;
 }
 
+static bool starts_with(string str, string prefix) {
+    if (str.count < prefix.count) {
+        return false;
+    }
+    str.count = prefix.count;
+    return strings_match(str, prefix);
+}
+
 http_parsing_result_t http_parse_response(const char *text_data, size_t text_len,
                                           http_header_t *headers_buf, size_t headers_max_len,
                                           http_response_t *out_resp) {
@@ -131,6 +139,10 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
         }
 
         if (!(strings_match(protocol_version, STR("HTTP/1.1")) || strings_match(protocol_version, STR("HTTP/1.0")))) {
+            if (starts_with(STR("HTTP/1."), protocol_version)) {
+                return PARSING_RES_NOT_ENOUGH_DATA;
+            }
+
             // Unknown protocol version
             return PARSING_RES_FAILED;
         }
