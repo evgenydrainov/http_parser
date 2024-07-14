@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.7)
 project(http_parser)
 
-set(CMAKE_BUILD_TYPE Debug)
+add_subdirectory(example)
 
 include_directories(http_parser include)
 
