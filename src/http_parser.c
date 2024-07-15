@@ -1,4 +1,5 @@
 #include "http_parser.h"
+#include <assert.h>
 
 #define STR_FMT "%.*s"
 #define STR_ARG(str) str.count, str.data
@@ -23,6 +24,20 @@ static string eat_line(string* str) {
     if (str->count > 0) {
         str->data++;
         str->count--;
+    }
+
+    return result;
+}
+
+// 
+// TODO: CLEANUP
+// 
+static string eat_line_no_skip(string* str) {
+    string result = {str->data, 0};
+    while (str->count > 0 && *str->data != '\n') {
+        str->data++;
+        str->count--;
+        result.count++;
     }
 
     return result;
@@ -115,12 +130,98 @@ static bool starts_with(string str, string prefix) {
     return strings_match(str, prefix);
 }
 
+static http_parsing_result_t parse_protocol_version(string* status_line, string* out_protocol_version) {
+    eat_whitespace(status_line);
+    string protocol_version = eat_word(status_line);
+
+    if (protocol_version.count == 0) {
+        return PARSING_RES_NOT_ENOUGH_DATA;
+    }
+
+    if (!(strings_match(protocol_version, STR("HTTP/1.1")) || strings_match(protocol_version, STR("HTTP/1.0")))) {
+        if (starts_with(STR("HTTP/1."), protocol_version)) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        // Unknown protocol version
+        return PARSING_RES_FAILED;
+    }
+
+    *out_protocol_version = protocol_version;
+    return PARSING_RES_SUCCEEDED;
+}
+
+static http_parsing_result_t parse_headers(string* text,
+                                           http_header_t* headers_buf, size_t headers_max_len,
+                                           size_t* out_num_headers_written) {
+    if (text->count == 0) {
+        return PARSING_RES_NOT_ENOUGH_DATA;
+    }
+
+    size_t header_index = 0;
+    size_t num_headers_written = 0;
+
+    while (text->count > 0) {
+        string header_line = eat_line_no_skip(text);
+
+        if (text->count > 0) {
+            // Skip newline character.
+            text->data++;
+            text->count--;
+        } else {
+            // This means that header_line didn't have a '\n' at the end.
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        if (header_line.count == 0) {
+            break;
+        }
+
+        eat_whitespace(&header_line);
+
+        if (!string_contains_char(header_line, ':')) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        string header_name = eat_header_name(&header_line);
+
+        if (header_name.count == 0) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        eat_whitespace(&header_line);
+        string header_value = header_line;
+
+        if (header_value.count == 0) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        if (header_index < headers_max_len) {
+            headers_buf[header_index].name     = header_name.data;
+            headers_buf[header_index].name_len = header_name.count;
+
+            headers_buf[header_index].value     = header_value.data;
+            headers_buf[header_index].value_len = header_value.count;
+
+            num_headers_written++;
+        } else {
+            // Ran out of memory.
+            return PARSING_RES_NOT_ENOUGH_MEMORY;
+        }
+
+        header_index++;
+    }
+
+    *out_num_headers_written = num_headers_written;
+    return PARSING_RES_SUCCEEDED;
+}
+
 http_parsing_result_t http_parse_response(const char *text_data, size_t text_len,
                                           http_header_t *headers_buf, size_t headers_max_len,
                                           http_response_t *out_resp) {
-    if (!text_data || !headers_buf || !out_resp) {
-        return PARSING_RES_FAILED;
-    }
+    assert(text_data);
+    assert(headers_buf);
+    assert(out_resp);
 
     *out_resp = (http_response_t) {0};
     
@@ -131,20 +232,10 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
         string status_line = eat_line(&text);
 
         // Protocol version.
-        eat_whitespace(&status_line);
-        string protocol_version = eat_word(&status_line);
-        
-        if (protocol_version.count == 0) {
-            return PARSING_RES_NOT_ENOUGH_DATA;
-        }
-
-        if (!(strings_match(protocol_version, STR("HTTP/1.1")) || strings_match(protocol_version, STR("HTTP/1.0")))) {
-            if (starts_with(STR("HTTP/1."), protocol_version)) {
-                return PARSING_RES_NOT_ENOUGH_DATA;
-            }
-
-            // Unknown protocol version
-            return PARSING_RES_FAILED;
+        string protocol_version;
+        http_parsing_result_t res = parse_protocol_version(&status_line, &protocol_version);
+        if (res != PARSING_RES_SUCCEEDED) {
+            return res;
         }
 
         out_resp->protocol     = protocol_version.data;
@@ -176,45 +267,10 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
 
     // Read headers.
     {
-        string header_line = eat_line(&text);
-        size_t header_index = 0;
-        size_t num_headers_written = 0;
-
-        while (header_line.count > 0) {
-            eat_whitespace(&header_line);
-
-            if (!string_contains_char(header_line, ':')) {
-                return PARSING_RES_NOT_ENOUGH_DATA;
-            }
-
-            string header_name = eat_header_name(&header_line);
-
-            if (header_name.count == 0) {
-                return PARSING_RES_NOT_ENOUGH_DATA;
-            }
-
-            eat_whitespace(&header_line);
-            string header_value = header_line;
-
-            if (header_value.count == 0) {
-                return PARSING_RES_NOT_ENOUGH_DATA;
-            }
-
-            if (header_index < headers_max_len) {
-                headers_buf[header_index].name     = header_name.data;
-                headers_buf[header_index].name_len = header_name.count;
-
-                headers_buf[header_index].value     = header_value.data;
-                headers_buf[header_index].value_len = header_value.count;
-
-                num_headers_written++;
-            } else {
-                // Ran out of memory.
-                return PARSING_RES_NOT_ENOUGH_MEMORY;
-            }
-
-            header_line = eat_line(&text);
-            header_index++;
+        size_t num_headers_written;
+        http_parsing_result_t res = parse_headers(&text, headers_buf, headers_max_len, &num_headers_written);
+        if (res != PARSING_RES_SUCCEEDED) {
+            return res;
         }
 
         out_resp->headers     = headers_buf;
@@ -225,10 +281,83 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
     {
         string body = text;
 
-        // Body is optional, so don't check for empty?
+        // Body is optional, so don't check for empty
 
         out_resp->body     = body.data;
         out_resp->body_len = body.count;
+    }
+
+    return PARSING_RES_SUCCEEDED;
+}
+
+http_parsing_result_t http_parse_request(const char *text_data, size_t text_len,
+                                         http_header_t *headers_buf, size_t headers_max_len,
+                                         http_request_t *out_req) {
+    assert(text_data);
+    assert(headers_buf);
+    assert(out_req);
+
+    *out_req = (http_request_t) {0};
+    
+    string text = {text_data, text_len};
+
+    // Read status line.
+    {
+        string status_line = eat_line(&text);
+
+        // Method.
+        eat_whitespace(&status_line);
+        string method = eat_word(&status_line);
+        
+        if (method.count == 0) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        out_req->method     = method.data;
+        out_req->method_len = method.count;
+
+        // Target.
+        eat_whitespace(&status_line);
+        string target = eat_word(&status_line);
+        
+        if (target.count == 0) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        out_req->target     = target.data;
+        out_req->target_len = target.count;
+
+        // Protocol version.
+        string protocol_version;
+        http_parsing_result_t res = parse_protocol_version(&status_line, &protocol_version);
+        if (res != PARSING_RES_SUCCEEDED) {
+            return res;
+        }
+
+        out_req->protocol     = protocol_version.data;
+        out_req->protocol_len = protocol_version.count;
+    }
+
+    // Read headers.
+    {
+        size_t num_headers_written;
+        http_parsing_result_t res = parse_headers(&text, headers_buf, headers_max_len, &num_headers_written);
+        if (res != PARSING_RES_SUCCEEDED) {
+            return res;
+        }
+
+        out_req->headers     = headers_buf;
+        out_req->headers_len = num_headers_written;
+    }
+
+    // Remaining text is the body.
+    {
+        string body = text;
+
+        // Body is optional, so don't check for empty
+
+        out_req->body     = body.data;
+        out_req->body_len = body.count;
     }
 
     return PARSING_RES_SUCCEEDED;
