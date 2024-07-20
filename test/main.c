@@ -33,6 +33,8 @@ static bool strings_match(string a, string b) {
 // 
 #define my_assert(expr) do { while (!(expr)) { printf("ASSERTION FAILED: "__FILE__":%i: %s\n", __LINE__, #expr); exit(1); } } while (0)
 
+// Responses
+
 static void test_response_full() {
     char text[] = 
         "HTTP/1.1 403 Forbidden\n"
@@ -220,6 +222,25 @@ static void test_response_incomplete_header() {
     my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
 }
 
+static void test_response_incomplete_header_with_body() {
+    char text[] = 
+        "HTTP/1.1 403 Forbidden\n"
+        "Server: Apache\n"
+        "Content-Type: text/html; charset=iso-8859-1\n"
+        "Date: Wed, 10 Aug 2016 09:23:25 GMT\n"
+        "Keep-Alive: timeout-=5, max=1000\n"
+        "Conn\n"
+        "\n"
+        "body";
+    
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_FAILED);
+}
+
 static void test_response_no_headers() {
     char text[] = 
         "HTTP/1.1 403 Forbidden\n"
@@ -288,6 +309,217 @@ static void test_response_incomplete_protocol_with_body() {
     my_assert(result == PARSING_RES_FAILED);
 }
 
+// Requests
+
+static void test_request_full() {
+    char text[] =
+        "POST / HTTP/1.1\n"
+        "Host: localhost:8000\n"
+        "User-Agent: Mozilla/5.0 (Macintosh;...) ... Firefox/51.0\n"
+        "Accept: text/html,application/xhtml+xml,...,*/*;q=0.8\n"
+        "Accept-Language: en-US,en;q=0.5\n"
+        "Accept-Encoding: gzip, deflate\n"
+        "Connection: keep-alive\n"
+        "Upgrade-Insecure-Requests: 1\n"
+        "Content-Type: multipart/form-data; boundary=-12656974\n"
+        "Content-Length: 345\n"
+        "\n"
+        "-12656974\n"
+        "(more data)";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_SUCCEEDED);
+    my_assert(strings_match((string){request.method, request.method_len}, STR("POST")));
+    my_assert(strings_match((string){request.target, request.target_len}, STR("/")));
+    my_assert(strings_match((string){request.protocol, request.protocol_len}, STR("HTTP/1.1")));
+    my_assert(request.headers_len == 9);
+
+    my_assert(strings_match((string){request.headers[0].name, request.headers[0].name_len}, STR("Host")));
+    my_assert(strings_match((string){request.headers[1].name, request.headers[1].name_len}, STR("User-Agent")));
+    my_assert(strings_match((string){request.headers[2].name, request.headers[2].name_len}, STR("Accept")));
+    my_assert(strings_match((string){request.headers[3].name, request.headers[3].name_len}, STR("Accept-Language")));
+    my_assert(strings_match((string){request.headers[4].name, request.headers[4].name_len}, STR("Accept-Encoding")));
+    my_assert(strings_match((string){request.headers[5].name, request.headers[5].name_len}, STR("Connection")));
+    my_assert(strings_match((string){request.headers[6].name, request.headers[6].name_len}, STR("Upgrade-Insecure-Requests")));
+    my_assert(strings_match((string){request.headers[7].name, request.headers[7].name_len}, STR("Content-Type")));
+    my_assert(strings_match((string){request.headers[8].name, request.headers[8].name_len}, STR("Content-Length")));
+
+    my_assert(strings_match((string){request.headers[0].value, request.headers[0].value_len}, STR("localhost:8000")));
+    my_assert(strings_match((string){request.headers[1].value, request.headers[1].value_len}, STR("Mozilla/5.0 (Macintosh;...) ... Firefox/51.0")));
+    my_assert(strings_match((string){request.headers[2].value, request.headers[2].value_len}, STR("text/html,application/xhtml+xml,...,*/*;q=0.8")));
+    my_assert(strings_match((string){request.headers[3].value, request.headers[3].value_len}, STR("en-US,en;q=0.5")));
+    my_assert(strings_match((string){request.headers[4].value, request.headers[4].value_len}, STR("gzip, deflate")));
+    my_assert(strings_match((string){request.headers[5].value, request.headers[5].value_len}, STR("keep-alive")));
+    my_assert(strings_match((string){request.headers[6].value, request.headers[6].value_len}, STR("1")));
+    my_assert(strings_match((string){request.headers[7].value, request.headers[7].value_len}, STR("multipart/form-data; boundary=-12656974")));
+    my_assert(strings_match((string){request.headers[8].value, request.headers[8].value_len}, STR("345")));
+}
+
+static void test_request_full_with_incomplete_protocol() {
+    char text[] =
+        "POST / HTTP/\n"
+        "Host: localhost:8000\n"
+        "User-Agent: Mozilla/5.0 (Macintosh;...) ... Firefox/51.0\n"
+        "Accept: text/html,application/xhtml+xml,...,*/*;q=0.8\n"
+        "Accept-Language: en-US,en;q=0.5\n"
+        "Accept-Encoding: gzip, deflate\n"
+        "Connection: keep-alive\n"
+        "Upgrade-Insecure-Requests: 1\n"
+        "Content-Type: multipart/form-data; boundary=-12656974\n"
+        "Content-Length: 345\n"
+        "\n"
+        "-12656974\n"
+        "(more data)";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_FAILED);
+}
+
+static void test_request_header_with_newline() {
+    char text[] =
+        "POST / HTTP/1.1\n"
+        "Host: localhost:8000\n"
+        "User-Agent: Mozilla/5.0 (Macintosh;...) ... Firefox/51.0\n"
+        "Accept: text/html,application/xhtml+xml,...,*/*;q=0.8\n"
+        "Accept-Language: en-US,en;q=0.5\n"
+        "Accept-Encoding: gzip, deflate\n"
+        "Connection: keep-alive\n"
+        "Upgrade-Insecure-Requests: 1\n"
+        "Content-Type: multipart/form-data; boundary=-12656974\n"
+        "Content-Length: 345\n";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
+}
+
+static void test_request_header_no_newline() {
+    char text[] =
+        "POST / HTTP/1.1\n"
+        "Host: localhost:8000\n"
+        "User-Agent: Mozilla/5.0 (Macintosh;...) ... Firefox/51.0\n"
+        "Accept: text/html,application/xhtml+xml,...,*/*;q=0.8\n"
+        "Accept-Language: en-US,en;q=0.5\n"
+        "Accept-Encoding: gzip, deflate\n"
+        "Connection: keep-alive\n"
+        "Upgrade-Insecure-Requests: 1\n"
+        "Content-Type: multipart/form-data; boundary=-12656974\n"
+        "Content-Length: 345";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
+}
+
+static void test_request_incomplete_header() {
+    char text[] =
+        "POST / HTTP/1.1\n"
+        "Host: localhost:8000\n"
+        "User-Agent: Mozilla/5.0 (Macintosh;...) ... Firefox/51.0\n"
+        "Accept: text/html,application/xhtml+xml,...,*/*;q=0.8\n"
+        "Accept-Language: en-US,en;q=0.5\n"
+        "Accept-Encoding: gzip, deflate\n"
+        "Conn";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
+}
+
+static void test_request_incomplete_header_with_body() {
+    char text[] =
+        "POST / HTTP/1.1\n"
+        "Host: localhost:8000\n"
+        "User-Agent: Mozilla/5.0 (Macintosh;...) ... Firefox/51.0\n"
+        "Accept: text/html,application/xhtml+xml,...,*/*;q=0.8\n"
+        "Accept-Language: en-US,en;q=0.5\n"
+        "Accept-Encoding: gzip, deflate\n"
+        "Conn\n"
+        "\n"
+        "body";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_FAILED);
+}
+
+static void test_request_no_headers() {
+    char text[] =
+        "POST / HTTP/1.1\n"
+        "\n"
+        "-12656974\n"
+        "(more data)";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_SUCCEEDED);
+    my_assert(strings_match((string){request.method, request.method_len}, STR("POST")));
+    my_assert(strings_match((string){request.target, request.target_len}, STR("/")));
+    my_assert(strings_match((string){request.protocol, request.protocol_len}, STR("HTTP/1.1")));
+    my_assert(request.headers_len == 0);
+}
+
+static void test_request_only_status_line() {
+    char text[] =
+        "POST / HTTP/1.1";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
+}
+
+static void test_request_incomplete_protocol() {
+    char text[] =
+        "POST / HTTP/";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
+}
+
+static void test_request_incomplete_protocol_with_body() {
+    char text[] =
+        "POST / HTTP/\n"
+        "\n"
+        "body\n";
+    
+    http_header_t headers_buf[100];
+    http_request_t request;
+    http_parsing_result_t result = http_parse_request(text, sizeof(text) - 1,
+                                                      headers_buf, ARRAY_LENGTH(headers_buf),
+                                                      &request);
+    my_assert(result == PARSING_RES_FAILED);
+}
+
 int main(int argc, char* argv[]) {
     test_response_full();
     test_response_invalid_protocol();
@@ -296,11 +528,23 @@ int main(int argc, char* argv[]) {
     test_response_header_with_newline();
     test_response_header_no_newline();
     test_response_incomplete_header();
+    test_response_incomplete_header_with_body();
     test_response_no_headers();
     test_response_only_status_line();
     test_response_only_incomplete_protocol();
     test_response_incomplete_protocol_with_space();
     test_response_incomplete_protocol_with_body();
+
+    test_request_full();
+    test_request_full_with_incomplete_protocol();
+    test_request_header_with_newline();
+    test_request_header_no_newline();
+    test_request_incomplete_header();
+    test_request_incomplete_header_with_body();
+    test_request_no_headers();
+    test_request_only_status_line();
+    test_request_incomplete_protocol();
+    test_request_incomplete_protocol_with_body();
 
     printf("All tests passed.\n");
 }
