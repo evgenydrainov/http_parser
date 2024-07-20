@@ -126,7 +126,13 @@ static http_parsing_result_t parse_protocol_version(string* status_line, string*
 
     if (!(strings_match(protocol_version, STR("HTTP/1.1")) || strings_match(protocol_version, STR("HTTP/1.0")))) {
         if (starts_with(STR("HTTP/1."), protocol_version)) {
-            return PARSING_RES_NOT_ENOUGH_DATA;
+            if (status_line->count == 0) {
+                // If string is over, then protocol version can be completed later
+                return PARSING_RES_NOT_ENOUGH_DATA;
+            } else {
+                // String is not over, there's leftover whitespace
+                return PARSING_RES_FAILED;
+            }
         }
 
         // Unknown protocol version
