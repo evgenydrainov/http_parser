@@ -29,20 +29,6 @@ static string eat_line(string* str) {
     return result;
 }
 
-// 
-// TODO: CLEANUP
-// 
-static string eat_line_no_skip(string* str) {
-    string result = {str->data, 0};
-    while (str->count > 0 && *str->data != '\n') {
-        str->data++;
-        str->count--;
-        result.count++;
-    }
-
-    return result;
-}
-
 static string eat_header_name(string* str) {
     string result = {str->data, 0};
     while (str->count > 0 && *str->data != ':') {
@@ -162,19 +148,12 @@ static http_parsing_result_t parse_headers(string* text,
     size_t num_headers_written = 0;
 
     while (text->count > 0) {
-        string header_line = eat_line_no_skip(text);
-
-        if (text->count > 0) {
-            // Skip newline character.
-            text->data++;
-            text->count--;
-        } else {
-            // This means that header_line didn't have a '\n' at the end.
-            return PARSING_RES_NOT_ENOUGH_DATA;
-        }
+        string header_line = eat_line(text);
 
         if (header_line.count == 0) {
-            break;
+            // Encountered a blank line
+            *out_num_headers_written = num_headers_written;
+            return PARSING_RES_SUCCEEDED;
         }
 
         eat_whitespace(&header_line);
@@ -212,8 +191,8 @@ static http_parsing_result_t parse_headers(string* text,
         header_index++;
     }
 
-    *out_num_headers_written = num_headers_written;
-    return PARSING_RES_SUCCEEDED;
+    // Didn't encounter a blank line
+    return PARSING_RES_NOT_ENOUGH_DATA;
 }
 
 http_parsing_result_t http_parse_response(const char *text_data, size_t text_len,
