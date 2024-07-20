@@ -5,10 +5,6 @@
 
 #define ARRAY_LENGTH(a) (sizeof(a) / sizeof(a[0]))
 
-// 
-// TODO: Test requests.
-// 
-
 #define STR(s) ((string) {s, sizeof(s) - 1})
 
 typedef struct {
