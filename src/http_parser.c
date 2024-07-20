@@ -220,6 +220,15 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
         string protocol_version;
         http_parsing_result_t res = parse_protocol_version(&status_line, &protocol_version);
         if (res != PARSING_RES_SUCCEEDED) {
+            if (res == PARSING_RES_NOT_ENOUGH_DATA) {
+                if (text.count > 0) {
+                    // 
+                    // If data is incomplete at this point and there's more lines then it's an error
+                    // (leftover data in same line should've been handled in parse_protocol_version)
+                    // 
+                    return PARSING_RES_FAILED;
+                }
+            }
             return res;
         }
 

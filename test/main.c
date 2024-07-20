@@ -28,6 +28,9 @@ static bool strings_match(string a, string b) {
     return true;
 }
 
+// 
+// Custom assert macro because of ctest
+// 
 #define my_assert(expr) do { while (!(expr)) { printf("ASSERTION FAILED: "__FILE__":%i: %s\n", __LINE__, #expr); exit(1); } } while (0)
 
 static void test_response_full() {
