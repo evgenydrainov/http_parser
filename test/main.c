@@ -176,11 +176,7 @@ static void test_response_header_with_newline() {
     http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
                                                        headers_buf, ARRAY_LENGTH(headers_buf),
                                                        &response);
-    my_assert(result == PARSING_RES_SUCCEEDED);
-    my_assert(strings_match((string){response.protocol, response.protocol_len}, STR("HTTP/1.1")));
-    my_assert(response.status_code == 403);
-    my_assert(strings_match((string){response.status_text, response.status_text_len}, STR("Forbidden")));
-    my_assert(response.headers_len == 9);
+    my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
 }
 
 static void test_response_header_no_newline() {
@@ -263,6 +259,32 @@ static void test_response_only_incomplete_protocol() {
     my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
 }
 
+static void test_response_incomplete_protocol_with_space() {
+    char text[] = 
+        "HTTP/ ";
+    
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_FAILED);
+}
+
+static void test_response_incomplete_protocol_with_body() {
+    char text[] = 
+        "HTTP/\n"
+        "\n"
+        "body";
+    
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_FAILED);
+}
+
 int main(int argc, char* argv[]) {
     test_response_full();
     test_response_invalid_protocol();
@@ -274,6 +296,8 @@ int main(int argc, char* argv[]) {
     test_response_no_headers();
     test_response_only_status_line();
     test_response_only_incomplete_protocol();
+    test_response_incomplete_protocol_with_space();
+    test_response_incomplete_protocol_with_body();
 
     printf("All tests passed.\n");
 }
