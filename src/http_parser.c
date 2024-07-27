@@ -126,13 +126,11 @@ static http_parsing_result_t parse_protocol_version(string* status_line, string*
 
     if (!(strings_match(protocol_version, STR("HTTP/1.1")) || strings_match(protocol_version, STR("HTTP/1.0")))) {
         if (starts_with(STR("HTTP/1."), protocol_version)) {
-            if (status_line->count == 0) {
-                // If string is over, then protocol version can be completed later
-                return PARSING_RES_NOT_ENOUGH_DATA;
-            } else {
-                // String is not over, there's leftover whitespace
+            if (status_line->count > 0) {
+                // If string is not over, then error
                 return PARSING_RES_FAILED;
             }
+            return PARSING_RES_NOT_ENOUGH_DATA;
         }
 
         // Unknown protocol version
@@ -223,7 +221,7 @@ http_parsing_result_t http_parse_response(const char *text_data, size_t text_len
             if (res == PARSING_RES_NOT_ENOUGH_DATA) {
                 if (text.count > 0) {
                     // 
-                    // If data is incomplete at this point and there's more lines then it's an error
+                    // If data is incomplete at this point and there's more data then it's an error
                     // (leftover data in same line should've been handled in parse_protocol_version)
                     // 
                     return PARSING_RES_FAILED;
@@ -334,7 +332,7 @@ http_parsing_result_t http_parse_request(const char *text_data, size_t text_len,
             if (res == PARSING_RES_NOT_ENOUGH_DATA) {
                 if (text.count > 0) {
                     // 
-                    // If data is incomplete at this point and there's more lines then it's an error
+                    // If data is incomplete at this point and there's more data then it's an error
                     // (leftover data in same line should've been handled in parse_protocol_version)
                     // 
                     return PARSING_RES_FAILED;
