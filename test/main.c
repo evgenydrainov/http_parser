@@ -516,6 +516,145 @@ static void test_request_incomplete_protocol_with_body() {
     my_assert(result == PARSING_RES_FAILED);
 }
 
+static void test_decode() {
+    char text[] = 
+        "HTTP/1.1 200 OK\n"
+        "Content-Type: text/plain\n"
+        "Transfer-Encoding: chunked\n"
+        "\n"
+        "7\n"
+        "Mozilla\n"
+        "11\n"
+        "Developer Network\n"
+        "0\n"
+        "\n";
+
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_SUCCEEDED);
+
+    {
+        char decoded[256];
+        size_t decoded_len;
+        http_parsing_result_t result = http_decode_chunked(response.body, response.body_len, decoded, sizeof(decoded), &decoded_len);
+        my_assert(result == PARSING_RES_SUCCEEDED);
+        my_assert(strings_match((string){decoded, decoded_len}, STR("MozillaDeveloper Network")));
+    }
+}
+
+static void test_decode_incomplete() {
+    char text[] = 
+        "HTTP/1.1 200 OK\n"
+        "Content-Type: text/plain\n"
+        "Transfer-Encoding: chunked\n"
+        "\n"
+        "7\n"
+        "Mozilla\n"
+        "11\n"
+        "Dev";
+
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_SUCCEEDED);
+
+    {
+        char decoded[256];
+        size_t decoded_len;
+        http_parsing_result_t result = http_decode_chunked(response.body, response.body_len, decoded, sizeof(decoded), &decoded_len);
+        my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
+    }
+}
+
+static void test_decode_length_is_too_big() {
+    char text[] = 
+        "HTTP/1.1 200 OK\n"
+        "Content-Type: text/plain\n"
+        "Transfer-Encoding: chunked\n"
+        "\n"
+        "700\n"
+        "Mozilla\n"
+        "11\n"
+        "Developer Network\n"
+        "0\n"
+        "\n";
+
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_SUCCEEDED);
+
+    {
+        char decoded[256];
+        size_t decoded_len;
+        http_parsing_result_t result = http_decode_chunked(response.body, response.body_len, decoded, sizeof(decoded), &decoded_len);
+        my_assert(result == PARSING_RES_NOT_ENOUGH_DATA);
+    }
+}
+
+static void test_decode_length_is_too_small() {
+    char text[] = 
+        "HTTP/1.1 200 OK\n"
+        "Content-Type: text/plain\n"
+        "Transfer-Encoding: chunked\n"
+        "\n"
+        "1\n"
+        "Mozilla\n"
+        "11\n"
+        "Developer Network\n"
+        "0\n"
+        "\n";
+
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_SUCCEEDED);
+
+    {
+        char decoded[256];
+        size_t decoded_len;
+        http_parsing_result_t result = http_decode_chunked(response.body, response.body_len, decoded, sizeof(decoded), &decoded_len);
+        my_assert(result == PARSING_RES_FAILED);
+    }
+}
+
+static void test_decode_last_line_invalid() {
+    char text[] = 
+        "HTTP/1.1 200 OK\n"
+        "Content-Type: text/plain\n"
+        "Transfer-Encoding: chunked\n"
+        "\n"
+        "1\n"
+        "Mozilla\n"
+        "11\n"
+        "Developer Network\n"
+        "0\n"
+        "FOO\n";
+
+    http_header_t headers_buf[100];
+    http_response_t response;
+    http_parsing_result_t result = http_parse_response(text, sizeof(text) - 1,
+                                                       headers_buf, ARRAY_LENGTH(headers_buf),
+                                                       &response);
+    my_assert(result == PARSING_RES_SUCCEEDED);
+
+    {
+        char decoded[256];
+        size_t decoded_len;
+        http_parsing_result_t result = http_decode_chunked(response.body, response.body_len, decoded, sizeof(decoded), &decoded_len);
+        my_assert(result == PARSING_RES_FAILED);
+    }
+}
+
 int main(int argc, char* argv[]) {
     test_response_full();
     test_response_invalid_protocol();
@@ -541,6 +680,12 @@ int main(int argc, char* argv[]) {
     test_request_only_status_line();
     test_request_incomplete_protocol();
     test_request_incomplete_protocol_with_body();
+
+    test_decode();
+    test_decode_incomplete();
+    test_decode_length_is_too_big();
+    test_decode_length_is_too_small();
+    test_decode_last_line_invalid();
 
     printf("All tests passed.\n");
 }

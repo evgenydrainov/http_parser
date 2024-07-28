@@ -100,4 +100,9 @@ http_parsing_result_t http_parse_request(const char *text, size_t text_len,
                                          http_header_t *headers_buf, size_t headers_max_len,
                                          http_request_t *out_req);
 
+
+http_parsing_result_t http_decode_chunked(const char* body, size_t body_len,
+                                          char* buf, size_t buf_len,
+                                          size_t* out_decoded_len);
+
 #endif /* LIB_HTTP_PARSER_H */

@@ -50,8 +50,12 @@ static bool is_whitespace(char ch) {
     return ch == ' ' || ch == '\t' || ch == '\n'; // Should '\r' be here?
 }
 
-static bool is_numerical(char ch) {
+static bool is_numeric(char ch) {
     return ch >= '0' && ch <= '9';
+}
+
+static bool is_hexadecimal(char ch) {
+    return is_numeric(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F');
 }
 
 static string eat_word(string* str) {
@@ -74,13 +78,38 @@ static void eat_whitespace(string* str) {
 static uint16_t string_to_u16(string str, bool* done) {
     uint16_t result = 0;
     for (size_t i = 0; i < str.count; i++) {
-        if (!is_numerical(str.data[i])) {
+        if (!is_numeric(str.data[i])) {
             *done = false;
             return 0;
         }
 
         result *= 10;
         result += str.data[i] - '0';
+    }
+
+    *done = true;
+    return result;
+}
+
+static uint32_t hex_to_u32(string str, bool* done) {
+    uint32_t result = 0;
+    for (size_t i = 0; i < str.count; i++) {
+        if (!is_hexadecimal(str.data[i])) {
+            *done = false;
+            return 0;
+        }
+
+        result *= 16;
+        
+        if (is_numeric(str.data[i])) {
+            result += str.data[i] - '0';
+        } else if (str.data[i] >= 'a' && str.data[i] <= 'f') {
+            result += str.data[i] - 'a';
+        } else if (str.data[i] >= 'A' && str.data[i] <= 'F') {
+            result += str.data[i] - 'A';
+        } else {
+            assert(false);
+        }
     }
 
     *done = true;
@@ -374,4 +403,71 @@ http_parsing_result_t http_parse_request(const char *text_data, size_t text_len,
     }
 
     return PARSING_RES_SUCCEEDED;
+}
+
+http_parsing_result_t http_decode_chunked(const char* body_data, size_t body_len,
+                                          char* buf, size_t buf_len,
+                                          size_t* out_decoded_len) {
+    assert(body_data);
+    assert(buf);
+    assert(out_decoded_len);
+
+    string body = {body_data, body_len};
+
+    size_t decoded_len = 0;
+
+    while (body.count > 0) {
+        string length_str = eat_line(&body);
+
+        bool done;
+        uint32_t length = hex_to_u32(length_str, &done);
+        if (!done) {
+            return PARSING_RES_FAILED;
+        }
+
+        // Stop when encounter zero
+        if (length == 0) {
+            // There has to be another empty line
+            if (body.count == 0) {
+                return PARSING_RES_NOT_ENOUGH_DATA;
+            }
+
+            string empty_line = eat_line(&body);
+            if (empty_line.count == 0) {
+                *out_decoded_len = decoded_len;
+                return PARSING_RES_SUCCEEDED;
+            } else {
+                return PARSING_RES_FAILED;
+            }
+        }
+
+        if (body.count < length) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+
+        for (size_t i = 0; i < length; i++) {
+            if (decoded_len >= buf_len) {
+                return PARSING_RES_NOT_ENOUGH_MEMORY;
+            }
+            buf[decoded_len] = body.data[i];
+            decoded_len++;
+        }
+
+        body.data += length;
+        body.count -= length;
+
+        // Skip newline
+        // TODO: CRLF
+        if (body.count == 0) {
+            return PARSING_RES_NOT_ENOUGH_DATA;
+        }
+        if (*body.data != '\n') {
+            return PARSING_RES_FAILED;
+        }
+        body.data++;
+        body.count--;
+    }
+
+    // Didn't find a line with a zero
+    return PARSING_RES_NOT_ENOUGH_DATA;
 }
